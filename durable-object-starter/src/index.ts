@@ -14,7 +14,7 @@ import { DurableObject } from "cloudflare:workers";
  */
 
 /** A Durable Object's behavior is defined in an exported Javascript class */
-export class MyDurableObject extends DurableObject<Env> {
+export class DumbExample extends DurableObject<Env> {
 	/**
 	 * The constructor is invoked once upon creation of the Durable Object, i.e. the first call to
 	 * 	`DurableObjectStub::get` for a given identifier (no-op constructors can be omitted)
@@ -33,8 +33,19 @@ export class MyDurableObject extends DurableObject<Env> {
 	 * @param name - The name provided to a Durable Object instance from a Worker
 	 * @returns The greeting to be sent back to the Worker
 	 */
-	async sayHello(name: string): Promise<string> {
-		return `Hello, ${name}!`;
+	async sayHelloAndDate(name: string, hits: number): Promise<string> {
+		const today = new Intl.DateTimeFormat("en-US", {
+			dateStyle: "long",
+			timeZone: "America/New_York"
+		}).format(new Date());
+		return `Hello, ${name}! Today's date is ${today} and you have already visited us ${hits} times.`;
+	}
+
+	async hits(): Promise<number> {
+		let hits = (await this.ctx.storage.get<number>("hits")) ?? 0;
+		hits += 1;
+		await this.ctx.storage.put("hits", hits);
+		return hits;
 	}
 }
 
@@ -48,17 +59,14 @@ export default {
 	 * @returns The response to be sent back to the client
 	 */
 	async fetch(request, env, ctx): Promise<Response> {
-		// Create a stub to open a communication channel with the Durable Object
-		// instance named "foo".
-		//
-		// Requests from all Workers to the Durable Object instance named "foo"
-		// will go to a single remote Durable Object instance.
-		const stub = env.MY_DURABLE_OBJECT.getByName("foo");
-
-		// Call the `sayHello()` RPC method on the stub to invoke the method on
-		// the remote Durable Object instance.
-		const greeting = await stub.sayHello("world");
-
+		const url = new URL(request.url);
+		if (url.pathname === "/favicon.ico") {
+			return new Response(null, { status: 404 });
+		}
+		const name = url.searchParams.get("name")?.trim() || "world";
+		const stub = env.DUMB_EXAMPLE.getByName(name);
+		const hits = await stub.hits()
+		const greeting = await stub.sayHelloAndDate(name, hits);
 		return new Response(greeting);
 	},
 } satisfies ExportedHandler<Env>;
